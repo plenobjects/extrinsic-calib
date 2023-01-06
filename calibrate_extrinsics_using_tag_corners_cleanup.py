@@ -2,6 +2,7 @@ import argparse
 import glob
 import os
 import random
+from copy import deepcopy
 
 import apriltag
 import cv2
@@ -484,6 +485,8 @@ if __name__ == "__main__":
         ]
         for i in range(num_cameras)
     ]
+    
+    viz_clouds = []  # This list will be set only if args.visualize is True
 
     # Poll all images for tags of interest
     img_tag_viewgraph = np.zeros((num_cameras, num_tags)).astype(bool)
@@ -531,6 +534,9 @@ if __name__ == "__main__":
     pcd0_colors = np.asarray(pcd0.colors)
     pcd0_colors[:, 1:3] /= 2  # decrease opacity of G, B channels
     pcd0.colors = o3d.utility.Vector3dVector(pcd0_colors)
+    
+    if args.visualize:
+        viz_clouds.append(pcd0)
 
     if args.save:
         # Store pose of ref cam as the 4 x 4 identity matrix
@@ -652,21 +658,34 @@ if __name__ == "__main__":
         pcd_cur_corners = o3d.geometry.PointCloud()
         pcd_cur_corners.points = o3d.utility.Vector3dVector(_corner_pcd_cur)
         pcd_cur_corners.paint_uniform_color([0, 0, 1])
+        
+        # This seems to work well
+        _rot = _transform[:3, :3]
+        _translation = _transform[:3, 3]
+        _transform[:3, :3] = _rot.T
+        _transform[:3, 3] = _translation
+        pcd_cur.transform(_transform)
+        
         # pcd_cur_corners.transform(_transform)
 
         # o3d.visualization.draw_geometries([pcd0_corners, pcd_cur_corners])
 
-        pcd_cur_points = np.asarray(pcd_cur.points)
-        pcd_cur_points = (
-            np.matmul(pcd_cur_points, _transform[:3, :3]) + _transform[:3, 3]
-        )
-        pcd_cur.points = o3d.utility.Vector3dVector(pcd_cur_points)
+        # pcd_cur_points = np.asarray(pcd_cur.points)
+        # pcd_cur_points = (
+        #     np.matmul(pcd_cur_points, _transform[:3, :3]) + _transform[:3, 3]
+        # )
+        # pcd_cur.points = o3d.utility.Vector3dVector(pcd_cur_points)
         pcd0_colors[:, :2] /= 2  # decrease opacity of R, G channels
         pcd0.colors = o3d.utility.Vector3dVector(pcd0_colors)
 
         if args.visualize:
             o3d.visualization.draw_geometries([pcd0, pcd_cur])
+            viz_clouds.append(pcd_cur)
 
         if args.save:
             savefile = os.path.join(devids[cam_idx], "pose.npy")
             np.save(savefile, _transform)
+            print(f"Saved transform to {savefile}")
+    
+    if args.visualize:
+        o3d.visualization.draw_geometries(viz_clouds)
